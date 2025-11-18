@@ -142,12 +142,6 @@
         
         <form id="registerForm" onsubmit="handleRegister(event)">
             <div class="form-group">
-                <label for="username">Username:</label>
-                <input type="text" id="username" placeholder="Masukkan username" required minlength="3">
-                <div class="password-hint">Minimal 3 karakter</div>
-            </div>
-            
-            <div class="form-group">
                 <label for="email">Email:</label>
                 <input type="email" id="email" placeholder="Masukkan email" required>
             </div>
@@ -156,11 +150,6 @@
                 <label for="password">Password:</label>
                 <input type="password" id="password" placeholder="Masukkan password" required minlength="6">
                 <div class="password-hint">Minimal 6 karakter</div>
-            </div>
-            
-            <div class="form-group">
-                <label for="confirmPassword">Konfirmasi Password:</label>
-                <input type="password" id="confirmPassword" placeholder="Masukkan ulang password" required>
             </div>
             
             <button type="submit">Daftar</button>
@@ -181,17 +170,9 @@
         async function handleRegister(event) {
             event.preventDefault();
             
-            const username = document.getElementById('username').value;
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
-            const confirmPassword = document.getElementById('confirmPassword').value;
             const resultDiv = document.getElementById('registerResult');
-
-            // Validate passwords match
-            if (password !== confirmPassword) {
-                showResult(resultDiv, '✗ Password dan konfirmasi password tidak cocok!', 'error');
-                return;
-            }
 
             // Validate password length
             if (password.length < 6) {
@@ -205,7 +186,7 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ username, email, password })
+                    body: JSON.stringify({ email, password })
                 });
 
                 const data = await response.json();

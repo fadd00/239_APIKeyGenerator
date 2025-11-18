@@ -295,12 +295,16 @@
         <div class="card">
             <h2>Generate API Key</h2>
             <div class="form-group">
-                <label for="username">Username:</label>
-                <input type="text" id="username" placeholder="Masukkan username">
+                <label for="firstname">First Name:</label>
+                <input type="text" id="firstname" placeholder="Masukkan nama depan">
             </div>
             <div class="form-group">
-                <label for="apiName">Nama API:</label>
-                <input type="text" id="apiName" placeholder="Contoh: Weather API, Payment API, dll">
+                <label for="lastname">Last Name:</label>
+                <input type="text" id="lastname" placeholder="Masukkan nama belakang">
+            </div>
+            <div class="form-group">
+                <label for="email">Email:</label>
+                <input type="email" id="email" placeholder="Masukkan email">
             </div>
             <button onclick="generateApiKey()">Generate Key</button>
             <div id="generateResult" class="result"></div>
@@ -310,17 +314,23 @@
     <script>
         // Generate API Key
         async function generateApiKey() {
-            const username = document.getElementById('username').value;
-            const apiName = document.getElementById('apiName').value;
+            const firstname = document.getElementById('firstname').value;
+            const lastname = document.getElementById('lastname').value;
+            const email = document.getElementById('email').value;
             const resultDiv = document.getElementById('generateResult');
 
-            if (!username) {
-                showResult(resultDiv, 'Username harus diisi!', 'error');
+            if (!firstname) {
+                showResult(resultDiv, 'First Name harus diisi!', 'error');
                 return;
             }
 
-            if (!apiName) {
-                showResult(resultDiv, 'Nama API harus diisi!', 'error');
+            if (!lastname) {
+                showResult(resultDiv, 'Last Name harus diisi!', 'error');
+                return;
+            }
+
+            if (!email) {
+                showResult(resultDiv, 'Email harus diisi!', 'error');
                 return;
             }
 
@@ -330,7 +340,7 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ username, apiName })
+                    body: JSON.stringify({ firstname, lastname, email })
                 });
 
                 const data = await response.json();
@@ -339,9 +349,9 @@
                     resultDiv.innerHTML = `
                         <div class="api-key-display">
                             <strong>API Key Berhasil Dibuat!</strong><br>
-                            <strong>ID:</strong> ${data.apiId}<br>
-                            <strong>Username:</strong> ${data.username}<br>
-                            <strong>Nama API:</strong> ${data.apiName}<br>
+                            <strong>User ID:</strong> ${data.userId}<br>
+                            <strong>Name:</strong> ${data.firstname} ${data.lastname}<br>
+                            <strong>Email:</strong> ${data.email}<br>
                             <strong>API Key:</strong> ${data.apiKey}<br>
                             <strong>API Secret:</strong> ${data.apiSecret}<br>
                             <strong>Dibuat:</strong> ${new Date(data.createdAt).toLocaleString('id-ID')}<br>
@@ -355,8 +365,9 @@
                     resultDiv.className = 'result success';
                     resultDiv.style.display = 'block';
                     
-                    document.getElementById('username').value = '';
-                    document.getElementById('apiName').value = '';
+                    document.getElementById('firstname').value = '';
+                    document.getElementById('lastname').value = '';
+                    document.getElementById('email').value = '';
                 } else {
                     showResult(resultDiv, data.message, 'error');
                 }
