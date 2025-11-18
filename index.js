@@ -11,7 +11,7 @@ const dbConfig = {
     port: 3306,             
     user: 'root',           
     password: '',           
-    database: 'prak7',  
+    database: 'prak7_',  
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0
@@ -53,49 +53,79 @@ function generateId() {
 }
 
 app.post('/api/generate-key', async (req, res) => {
-    const { username, apiName } = req.body;
+    const { firstname, lastname, email } = req.body;
     
-    if (!username) {
+    if (!firstname) {
         return res.status(400).json({ 
             success: false, 
-            message: 'Username diperlukan' 
+            message: 'First Name diperlukan' 
         });
     }
 
-    if (!apiName) {
+    if (!lastname) {
         return res.status(400).json({ 
             success: false, 
-            message: 'Nama API diperlukan' 
+            message: 'Last Name diperlukan' 
+        });
+    }
+
+    if (!email) {
+        return res.status(400).json({ 
+            success: false, 
+            message: 'Email diperlukan' 
         });
     }
 
     try {
+        // Check if user exists, if not create new user
+        let userId;
+        const [existingUser] = await pool.execute('SELECT id FROM users WHERE email = ?', [email]);
+        
+        if (existingUser.length > 0) {
+            // User exists, update name if needed
+            userId = existingUser[0].id;
+            await pool.execute(
+                'UPDATE users SET firstname = ?, lastname = ?, updated_at = NOW() WHERE id = ?',
+                [firstname, lastname, userId]
+            );
+        } else {
+            // Create new user
+            const [result] = await pool.execute(
+                'INSERT INTO users (firstname, lastname, email) VALUES (?, ?, ?)',
+                [firstname, lastname, email]
+            );
+            userId = result.insertId;
+        }
+
+        // Generate API Key
         const apiKey = generateApiKey();
         const apiSecret = generateApiSecret();
-        const apiId = generateId();
         const apiHash = hashApiKey(apiKey);
-        const timestamp = new Date();
+        const createdAt = new Date();
         
-        // Insert ke database
-        const query = `
-            INSERT INTO api_keys (id, username, api_name, api_key, api_secret, api_hash, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        `;
+        // Set expiration date to 1 week from now
+        const expiresAt = new Date(createdAt.getTime() + 7 * 24 * 60 * 60 * 1000);
         
-        await pool.execute(query, [apiId, username, apiName, apiKey, apiSecret, apiHash, timestamp]);
+        // Insert API key into apikeys table
+        const [apiKeyResult] = await pool.execute(
+            'INSERT INTO apikeys (user_id, api_key, api_secret, hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)',
+            [userId, apiKey, apiSecret, apiHash, createdAt, expiresAt]
+        );
 
-        // Log aktivitas
-        await logActivity(apiId, 'created', req.ip, req.get('user-agent'), null, 'success', 'API Key created');
+        // Log activity
+        await logActivity(apiKeyResult.insertId, userId, 'created', null, req.ip, req.get('user-agent'), 'success', 'API Key created');
 
         res.json({
             success: true,
-            apiId: apiId,
+            userId: userId,
             apiKey: apiKey,
             apiSecret: apiSecret,
-            username: username,
-            apiName: apiName,
-            createdAt: timestamp,
-            note: 'Simpan API Key dan Secret dengan aman. Secret tidak dapat dilihat kembali.'
+            firstname: firstname,
+            lastname: lastname,
+            email: email,
+            createdAt: createdAt,
+            expiresAt: expiresAt,
+            note: 'Simpan API Key dan Secret dengan aman. Secret tidak dapat dilihat kembali. API Key akan hangus dalam 7 hari.'
         });
     } catch (error) {
         console.error('Error generating API key:', error);
@@ -118,25 +148,47 @@ app.post('/api/validate-key', async (req, res) => {
     }
 
     try {
-        const query = 'SELECT * FROM api_keys WHERE api_key = ? AND is_active = TRUE';
+        const query = `
+            SELECT a.*, u.firstname, u.lastname, u.email 
+            FROM apikeys a
+            JOIN users u ON a.user_id = u.id
+            WHERE a.api_key = ? AND a.is_active = TRUE
+        `;
         const [rows] = await pool.execute(query, [apiKey]);
         
         if (rows.length > 0) {
             const keyData = rows[0];
             
-            // Update last used
-            await pool.execute('UPDATE api_keys SET last_used = NOW() WHERE api_key = ?', [apiKey]);
+            // Check if expired
+            const now = new Date();
+            const expiresAt = new Date(keyData.expires_at);
             
-            // Log aktivitas
-            await logActivity(keyData.id, 'validated', req.ip, req.get('user-agent'), null, 'success', 'API Key validated');
+            if (now > expiresAt) {
+                // Mark as inactive if expired
+                await pool.execute('UPDATE apikeys SET is_active = FALSE WHERE api_key = ?', [apiKey]);
+                
+                await logActivity(keyData.id, keyData.user_id, 'validation_failed', null, req.ip, req.get('user-agent'), 'expired', 'API Key expired');
+                
+                return res.status(401).json({
+                    success: false,
+                    message: 'API Key sudah hangus (expired)'
+                });
+            }
+            
+            // Update last used
+            await pool.execute('UPDATE apikeys SET last_used = NOW() WHERE api_key = ?', [apiKey]);
+            
+            await logActivity(keyData.id, keyData.user_id, 'validated', null, req.ip, req.get('user-agent'), 'success', 'API Key validated');
             
             return res.json({
                 success: true,
                 message: 'API Key valid',
                 data: {
-                    username: keyData.username,
-                    apiName: keyData.api_name,
+                    firstname: keyData.firstname,
+                    lastname: keyData.lastname,
+                    email: keyData.email,
                     createdAt: keyData.created_at,
+                    expiresAt: keyData.expires_at,
                     lastUsed: keyData.last_used
                 }
             });
@@ -158,19 +210,36 @@ app.post('/api/validate-key', async (req, res) => {
 // Endpoint untuk mendapatkan semua API keys
 app.get('/api/keys', async (req, res) => {
     try {
-        const query = 'SELECT * FROM api_keys ORDER BY created_at DESC';
+        const query = `
+            SELECT a.*, u.firstname, u.lastname, u.email 
+            FROM apikeys a
+            JOIN users u ON a.user_id = u.id
+            ORDER BY a.created_at DESC
+        `;
         const [rows] = await pool.execute(query);
         
-        const keysArray = rows.map(row => ({
-            id: row.id,
-            apiKey: row.api_key,
-            username: row.username,
-            apiName: row.api_name,
-            hash: row.api_hash,
-            createdAt: row.created_at,
-            lastUsed: row.last_used,
-            isActive: row.is_active
-        }));
+        const now = new Date();
+        
+        const keysArray = rows.map(row => {
+            const expiresAt = new Date(row.expires_at);
+            const isExpired = now > expiresAt;
+            
+            return {
+                id: row.id,
+                apiKey: row.api_key,
+                firstname: row.firstname,
+                lastname: row.lastname,
+                email: row.email,
+                username: `${row.firstname} ${row.lastname}`,
+                apiName: row.email,
+                hash: row.hash,
+                createdAt: row.created_at,
+                expiresAt: row.expires_at,
+                lastUsed: row.last_used,
+                isActive: row.is_active && !isExpired,
+                isExpired: isExpired
+            };
+        });
         
         res.json({
             success: true,
@@ -186,7 +255,7 @@ app.get('/api/keys', async (req, res) => {
     }
 });
 
-// Endpoint untuk regenerate API key (ganti key, nama tetap)
+// Endpoint untuk regenerate API key (ganti key, user tetap)
 app.post('/api/regenerate-key', async (req, res) => {
     const { oldApiKey } = req.body;
     
@@ -198,8 +267,13 @@ app.post('/api/regenerate-key', async (req, res) => {
     }
 
     try {
-        // Cari data key lama
-        const [rows] = await pool.execute('SELECT * FROM api_keys WHERE api_key = ?', [oldApiKey]);
+        // Cari data key lama dengan join ke users
+        const [rows] = await pool.execute(`
+            SELECT a.*, u.firstname, u.lastname, u.email 
+            FROM apikeys a
+            JOIN users u ON a.user_id = u.id
+            WHERE a.api_key = ?
+        `, [oldApiKey]);
         
         if (rows.length === 0) {
             return res.status(404).json({
@@ -213,39 +287,33 @@ app.post('/api/regenerate-key', async (req, res) => {
         // Generate new key
         const newApiKey = generateApiKey();
         const newApiSecret = generateApiSecret();
-        const newApiId = generateId();
         const newApiHash = hashApiKey(newApiKey);
-        const timestamp = new Date();
+        const createdAt = new Date();
+        const expiresAt = new Date(createdAt.getTime() + 7 * 24 * 60 * 60 * 1000);
         
         // Insert new key
-        const insertQuery = `
-            INSERT INTO api_keys (id, username, api_name, api_key, api_secret, api_hash, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        `;
-        await pool.execute(insertQuery, [newApiId, oldKeyData.username, oldKeyData.api_name, newApiKey, newApiSecret, newApiHash, timestamp]);
-
-        // Insert history
-        const historyQuery = `
-            INSERT INTO api_key_history (old_api_key, new_api_key_id, username, api_name, reason)
-            VALUES (?, ?, ?, ?, ?)
-        `;
-        await pool.execute(historyQuery, [oldApiKey, newApiId, oldKeyData.username, oldKeyData.api_name, 'User requested regeneration']);
+        const [result] = await pool.execute(
+            'INSERT INTO apikeys (user_id, api_key, api_secret, hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)',
+            [oldKeyData.user_id, newApiKey, newApiSecret, newApiHash, createdAt, expiresAt]
+        );
 
         // Delete old key
-        await pool.execute('DELETE FROM api_keys WHERE api_key = ?', [oldApiKey]);
+        await pool.execute('DELETE FROM apikeys WHERE api_key = ?', [oldApiKey]);
 
-        // Log aktivitas
-        await logActivity(newApiId, 'regenerated', req.ip, req.get('user-agent'), null, 'success', 'API Key regenerated');
+        // Log activity
+        await logActivity(result.insertId, oldKeyData.user_id, 'regenerated', null, req.ip, req.get('user-agent'), 'success', 'API Key regenerated');
 
         res.json({
             success: true,
             oldApiKey: oldApiKey,
             newApiKey: newApiKey,
             newApiSecret: newApiSecret,
-            username: oldKeyData.username,
-            apiName: oldKeyData.api_name,
-            createdAt: timestamp,
-            note: 'API Key berhasil di-regenerate. Simpan Key dan Secret yang baru.'
+            firstname: oldKeyData.firstname,
+            lastname: oldKeyData.lastname,
+            email: oldKeyData.email,
+            createdAt: createdAt,
+            expiresAt: expiresAt,
+            note: 'API Key berhasil di-regenerate. Simpan Key dan Secret yang baru. API Key baru akan hangus dalam 7 hari.'
         });
     } catch (error) {
         console.error('Error regenerating API key:', error);
@@ -269,7 +337,7 @@ app.delete('/api/delete-key', async (req, res) => {
 
     try {
         // Cari data key
-        const [rows] = await pool.execute('SELECT * FROM api_keys WHERE api_key = ?', [apiKey]);
+        const [rows] = await pool.execute('SELECT * FROM apikeys WHERE api_key = ?', [apiKey]);
         
         if (rows.length === 0) {
             return res.status(404).json({
@@ -281,10 +349,10 @@ app.delete('/api/delete-key', async (req, res) => {
         const keyData = rows[0];
 
         // Log aktivitas sebelum delete
-        await logActivity(keyData.id, 'deleted', req.ip, req.get('user-agent'), null, 'success', 'API Key deleted');
+        await logActivity(keyData.id, keyData.user_id, 'deleted', null, req.ip, req.get('user-agent'), 'success', 'API Key deleted');
 
-        // Delete key
-        await pool.execute('DELETE FROM api_keys WHERE api_key = ?', [apiKey]);
+        // Delete key (CASCADE akan menghapus logs terkait)
+        await pool.execute('DELETE FROM apikeys WHERE api_key = ?', [apiKey]);
 
         return res.json({
             success: true,
@@ -311,24 +379,44 @@ app.get('/api/protected-data', async (req, res) => {
     }
 
     try {
-        const query = 'SELECT * FROM api_keys WHERE api_key = ? AND is_active = TRUE';
+        const query = `
+            SELECT a.*, u.firstname, u.lastname, u.email 
+            FROM apikeys a
+            JOIN users u ON a.user_id = u.id
+            WHERE a.api_key = ? AND a.is_active = TRUE
+        `;
         const [rows] = await pool.execute(query, [apiKey]);
         
         if (rows.length > 0) {
             const keyData = rows[0];
             
+            // Check if expired
+            const now = new Date();
+            const expiresAt = new Date(keyData.expires_at);
+            
+            if (now > expiresAt) {
+                await pool.execute('UPDATE apikeys SET is_active = FALSE WHERE api_key = ?', [apiKey]);
+                await logActivity(keyData.id, keyData.user_id, 'access_denied', '/api/protected-data', req.ip, req.get('user-agent'), 'expired', 'API Key expired');
+                
+                return res.status(401).json({
+                    success: false,
+                    message: 'API Key sudah hangus (expired)'
+                });
+            }
+            
             // Update last used
-            await pool.execute('UPDATE api_keys SET last_used = NOW() WHERE api_key = ?', [apiKey]);
+            await pool.execute('UPDATE apikeys SET last_used = NOW() WHERE api_key = ?', [apiKey]);
             
             // Log aktivitas
-            await logActivity(keyData.id, 'used', req.ip, req.get('user-agent'), '/api/protected-data', 'success', 'Accessed protected endpoint');
+            await logActivity(keyData.id, keyData.user_id, 'used', '/api/protected-data', req.ip, req.get('user-agent'), 'success', 'Accessed protected endpoint');
             
             return res.json({
                 success: true,
                 message: 'Akses diberikan',
                 data: {
                     message: 'Ini adalah data yang dilindungi',
-                    user: keyData.username,
+                    user: `${keyData.firstname} ${keyData.lastname}`,
+                    email: keyData.email,
                     timestamp: new Date().toISOString()
                 }
             });
@@ -347,18 +435,105 @@ app.get('/api/protected-data', async (req, res) => {
     }
 });
 
-// Helper function untuk logging aktivitas
-async function logActivity(apiKeyId, activityType, ipAddress, userAgent, endpoint, status, message) {
+// Helper function untuk logging aktivitas ke database
+async function logActivity(apikeyId, userId, activityType, endpoint, ipAddress, userAgent, status, message) {
     try {
         const query = `
-            INSERT INTO api_key_logs (api_key_id, activity_type, ip_address, user_agent, endpoint, status, message)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO api_logs (apikey_id, user_id, activity_type, endpoint, ip_address, user_agent, status, message)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `;
-        await pool.execute(query, [apiKeyId, activityType, ipAddress, userAgent, endpoint, status, message]);
+        await pool.execute(query, [apikeyId, userId, activityType, endpoint, ipAddress, userAgent, status, message]);
     } catch (error) {
         console.error('Error logging activity:', error);
     }
 }
+
+// Endpoint untuk register admin
+app.post('/api/register', async (req, res) => {
+    const { email, password } = req.body;
+    
+    if (!email || !password) {
+        return res.status(400).json({ 
+            success: false, 
+            message: 'Email dan password diperlukan' 
+        });
+    }
+
+    try {
+        // Check if admin already exists
+        const [existing] = await pool.execute('SELECT id FROM admins WHERE email = ?', [email]);
+        
+        if (existing.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email sudah terdaftar'
+            });
+        }
+
+        // Hash password (gunakan bcrypt di production)
+        const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
+        
+        // Insert admin
+        await pool.execute(
+            'INSERT INTO admins (email, password) VALUES (?, ?)',
+            [email, hashedPassword]
+        );
+
+        res.json({
+            success: true,
+            message: 'Registrasi berhasil'
+        });
+    } catch (error) {
+        console.error('Error registering admin:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Gagal registrasi: ' + error.message
+        });
+    }
+});
+
+// Endpoint untuk login admin
+app.post('/api/login', async (req, res) => {
+    const { email, password } = req.body;
+    
+    if (!email || !password) {
+        return res.status(400).json({ 
+            success: false, 
+            message: 'Email dan password diperlukan' 
+        });
+    }
+
+    try {
+        // Hash password untuk compare
+        const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
+        
+        const [rows] = await pool.execute(
+            'SELECT * FROM admins WHERE email = ? AND password = ?',
+            [email, hashedPassword]
+        );
+        
+        if (rows.length > 0) {
+            res.json({
+                success: true,
+                message: 'Login berhasil',
+                data: {
+                    email: email
+                }
+            });
+        } else {
+            res.status(401).json({
+                success: false,
+                message: 'Email atau password salah'
+            });
+        }
+    } catch (error) {
+        console.error('Error login:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Gagal login: ' + error.message
+        });
+    }
+});
 
 app.listen(PORT, () => {
     console.log(`Server berjalan di http://localhost:${PORT}`);
