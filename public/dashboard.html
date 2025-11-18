@@ -253,6 +253,10 @@
         <!-- Statistics -->
         <div class="stats">
             <div class="stat-box">
+                <h3 id="totalUsers">0</h3>
+                <p>Total Users</p>
+            </div>
+            <div class="stat-box">
                 <h3 id="totalKeys">0</h3>
                 <p>Total API Keys</p>
             </div>
@@ -260,16 +264,37 @@
                 <h3 id="activeKeys">0</h3>
                 <p>Active Keys</p>
             </div>
-            <div class="stat-box">
-                <h3 id="todayKeys">0</h3>
-                <p>Created Today</p>
+        </div>
+
+        <!-- Users Table -->
+        <div class="card">
+            <h2>Daftar Users</h2>
+            <button onclick="loadUsers()" class="btn-success">Refresh Users</button>
+            <div id="usersList" style="margin-top: 15px; overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #f8f9fa; text-align: left;">
+                            <th style="padding: 12px; border-bottom: 2px solid #dee2e6;">ID</th>
+                            <th style="padding: 12px; border-bottom: 2px solid #dee2e6;">First Name</th>
+                            <th style="padding: 12px; border-bottom: 2px solid #dee2e6;">Last Name</th>
+                            <th style="padding: 12px; border-bottom: 2px solid #dee2e6;">Email</th>
+                            <th style="padding: 12px; border-bottom: 2px solid #dee2e6;">Created At</th>
+                            <th style="padding: 12px; border-bottom: 2px solid #dee2e6;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersTableBody">
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 20px; color: #999;">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
 
-        <!-- API Keys List -->
+        <!-- API Keys Table -->
         <div class="card">
             <h2>Daftar API Keys</h2>
-            <button onclick="loadApiKeys()" class="btn-success">Refresh</button>
+            <button onclick="loadApiKeys()" class="btn-success">Refresh API Keys</button>
             <div id="keysList" class="keys-list"></div>
         </div>
     </div>
@@ -286,7 +311,8 @@
             const username = localStorage.getItem('username') || 'Admin';
             document.getElementById('currentUser').textContent = username;
             
-            // Load API keys
+            // Load data
+            loadUsers();
             loadApiKeys();
         };
 
@@ -296,6 +322,78 @@
                 localStorage.removeItem('isLoggedIn');
                 localStorage.removeItem('username');
                 window.location.href = 'login.html';
+            }
+        }
+
+        // Load all Users
+        async function loadUsers() {
+            const tableBody = document.getElementById('usersTableBody');
+
+            try {
+                const response = await fetch('/api/users');
+                const data = await response.json();
+
+                if (data.success) {
+                    // Update statistics
+                    document.getElementById('totalUsers').textContent = data.count;
+
+                    if (data.users.length === 0) {
+                        tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #999;">Belum ada user yang terdaftar.</td></tr>';
+                        return;
+                    }
+
+                    tableBody.innerHTML = data.users.map(user => `
+                        <tr style="border-bottom: 1px solid #dee2e6;">
+                            <td style="padding: 12px;">${user.id}</td>
+                            <td style="padding: 12px;">${user.firstname}</td>
+                            <td style="padding: 12px;">${user.lastname}</td>
+                            <td style="padding: 12px;">${user.email}</td>
+                            <td style="padding: 12px;">${new Date(user.created_at).toLocaleString('id-ID')}</td>
+                            <td style="padding: 12px;">
+                                <button class="copy-btn" onclick="viewUserDetails(${user.id})" style="padding: 6px 12px; font-size: 12px;">View Details</button>
+                            </td>
+                        </tr>
+                    `).join('');
+                } else {
+                    tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px; color: #dc3545;">${data.message || 'Gagal memuat users'}</td></tr>`;
+                }
+            } catch (error) {
+                tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px; color: #dc3545;">Error loading users: ${error.message}</td></tr>`;
+            }
+        }
+
+        // View user details
+        async function viewUserDetails(userId) {
+            try {
+                const response = await fetch(`/api/users/${userId}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    const user = data.user;
+                    const apiKeys = data.apiKeys;
+                    
+                    let message = `User Details:\n\n`;
+                    message += `ID: ${user.id}\n`;
+                    message += `Name: ${user.firstname} ${user.lastname}\n`;
+                    message += `Email: ${user.email}\n`;
+                    message += `Created: ${new Date(user.created_at).toLocaleString('id-ID')}\n`;
+                    message += `\nTotal API Keys: ${data.totalApiKeys}\n`;
+                    
+                    if (apiKeys.length > 0) {
+                        message += `\nAPI Keys:\n`;
+                        apiKeys.forEach((key, index) => {
+                            message += `\n${index + 1}. ${key.apiKey.substring(0, 20)}...`;
+                            message += `\n   Status: ${key.isExpired ? 'Expired' : (key.isActive ? 'Active' : 'Inactive')}`;
+                            message += `\n   Expires: ${new Date(key.expiresAt).toLocaleString('id-ID')}`;
+                        });
+                    }
+                    
+                    alert(message);
+                } else {
+                    alert(data.message || 'Gagal mengambil detail user');
+                }
+            } catch (error) {
+                alert('Terjadi kesalahan: ' + error.message);
             }
         }
 
@@ -310,27 +408,31 @@
                 if (data.success) {
                     // Update statistics
                     document.getElementById('totalKeys').textContent = data.count;
-                    document.getElementById('activeKeys').textContent = data.count;
                     
-                    // Count keys created today
-                    const today = new Date().toDateString();
-                    const todayCount = data.keys.filter(key => 
-                        new Date(key.createdAt).toDateString() === today
-                    ).length;
-                    document.getElementById('todayKeys').textContent = todayCount;
+                    // Count active keys (not expired)
+                    const activeCount = data.keys.filter(key => key.isActive && !key.isExpired).length;
+                    document.getElementById('activeKeys').textContent = activeCount;
 
                     if (data.keys.length === 0) {
                         keysListDiv.innerHTML = '<div class="empty-state">Belum ada API Key yang dibuat.</div>';
                         return;
                     }
 
-                    keysListDiv.innerHTML = data.keys.map(key => `
+                    keysListDiv.innerHTML = data.keys.map(key => {
+                        const statusBadge = key.isExpired ? 
+                            '<span style="background: #dc3545; color: white; padding: 3px 8px; border-radius: 3px; font-size: 11px;">Expired</span>' :
+                            (key.isActive ? 
+                                '<span style="background: #28a745; color: white; padding: 3px 8px; border-radius: 3px; font-size: 11px;">Active</span>' :
+                                '<span style="background: #6c757d; color: white; padding: 3px 8px; border-radius: 3px; font-size: 11px;">Inactive</span>');
+                        
+                        return `
                         <div class="api-box">
                             <div class="api-box-left">
-                                <h3>${key.apiName}</h3>
-                                <p><strong>ID:</strong> ${key.id || 'N/A'}</p>
-                                <p><strong>Username:</strong> ${key.username}</p>
+                                <h3>${key.email} ${statusBadge}</h3>
+                                <p><strong>User:</strong> ${key.firstname} ${key.lastname}</p>
+                                <p><strong>Email:</strong> ${key.email}</p>
                                 <p><strong>Dibuat:</strong> ${new Date(key.createdAt).toLocaleString('id-ID')}</p>
+                                <p><strong>Expires:</strong> ${new Date(key.expiresAt).toLocaleString('id-ID')}</p>
                                 ${key.lastUsed ? `<p><strong>Terakhir digunakan:</strong> ${new Date(key.lastUsed).toLocaleString('id-ID')}</p>` : '<p style="color: #999;">Belum pernah digunakan</p>'}
                             </div>
                             <div class="api-box-right">
@@ -342,7 +444,8 @@
                                 </div>
                             </div>
                         </div>
-                    `).join('');
+                    `;
+                    }).join('');
                 } else {
                     keysListDiv.innerHTML = `<div class="empty-state" style="color: #dc3545;">${data.message || 'Gagal memuat API Keys'}</div>`;
                 }
