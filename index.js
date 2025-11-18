@@ -11,7 +11,7 @@ const dbConfig = {
     port: 3306,             
     user: 'root',           
     password: '',           
-    database: 'api_key_management',  
+    database: 'prak7',  
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0
