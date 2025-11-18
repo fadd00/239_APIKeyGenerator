@@ -130,7 +130,7 @@
 </head>
 <body>
     <div class="login-container">
-        <h1>🔐 Login</h1>
+        <h1>Login</h1>
         
         <form id="loginForm" onsubmit="handleLogin(event)">
             <div class="form-group">
@@ -177,7 +177,7 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    showResult(resultDiv, '✓ Login berhasil! Mengalihkan ke dashboard...', 'success');
+                    showResult(resultDiv, 'Login berhasil! Mengalihkan ke dashboard...', 'success');
                     
                     // Store token or session (for now just simulate)
                     localStorage.setItem('isLoggedIn', 'true');
@@ -188,10 +188,10 @@
                         window.location.href = 'dashboard.html';
                     }, 1000);
                 } else {
-                    showResult(resultDiv, '✗ ' + (data.message || 'Login gagal! Username atau password salah.'), 'error');
+                    showResult(resultDiv, data.message || 'Login gagal! Email atau password salah.', 'error');
                 }
             } catch (error) {
-                showResult(resultDiv, '✗ Terjadi kesalahan: ' + error.message, 'error');
+                showResult(resultDiv, 'Terjadi kesalahan: ' + error.message, 'error');
             }
         }
 

@@ -138,7 +138,7 @@
 </head>
 <body>
     <div class="register-container">
-        <h1>📝 Register</h1>
+        <h1>Register</h1>
         
         <form id="registerForm" onsubmit="handleRegister(event)">
             <div class="form-group">
@@ -176,7 +176,7 @@
 
             // Validate password length
             if (password.length < 6) {
-                showResult(resultDiv, '✗ Password minimal 6 karakter!', 'error');
+                showResult(resultDiv, 'Password minimal 6 karakter!', 'error');
                 return;
             }
 
@@ -192,17 +192,17 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    showResult(resultDiv, '✓ Registrasi berhasil! Mengalihkan ke halaman login...', 'success');
+                    showResult(resultDiv, 'Registrasi berhasil! Mengalihkan ke halaman login...', 'success');
                     
                     // Redirect to login page after short delay
                     setTimeout(() => {
                         window.location.href = 'login.html';
                     }, 1500);
                 } else {
-                    showResult(resultDiv, '✗ ' + (data.message || 'Registrasi gagal!'), 'error');
+                    showResult(resultDiv, data.message || 'Registrasi gagal!', 'error');
                 }
             } catch (error) {
-                showResult(resultDiv, '✗ Terjadi kesalahan: ' + error.message, 'error');
+                showResult(resultDiv, 'Terjadi kesalahan: ' + error.message, 'error');
             }
         }
 

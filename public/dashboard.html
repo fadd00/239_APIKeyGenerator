@@ -243,9 +243,9 @@
     <div class="container">
         <!-- Header with user info -->
         <div class="header">
-            <h1>🎛️ Dashboard Admin</h1>
+            <h1>Dashboard Admin</h1>
             <div class="user-info">
-                <span class="username">👤 <span id="currentUser">Admin</span></span>
+                <span class="username"><span id="currentUser">Admin</span></span>
                 <button class="logout-btn" onclick="handleLogout()">Logout</button>
             </div>
         </div>
@@ -269,7 +269,7 @@
         <!-- API Keys List -->
         <div class="card">
             <h2>Daftar API Keys</h2>
-            <button onclick="loadApiKeys()" class="btn-success">🔄 Refresh</button>
+            <button onclick="loadApiKeys()" class="btn-success">Refresh</button>
             <div id="keysList" class="keys-list"></div>
         </div>
     </div>
@@ -320,7 +320,7 @@
                     document.getElementById('todayKeys').textContent = todayCount;
 
                     if (data.keys.length === 0) {
-                        keysListDiv.innerHTML = '<div class="empty-state">📭 Belum ada API Key yang dibuat.</div>';
+                        keysListDiv.innerHTML = '<div class="empty-state">Belum ada API Key yang dibuat.</div>';
                         return;
                     }
 
@@ -337,24 +337,23 @@
                                 <p class="api-key-text">${key.apiKey}</p>
                                 <p style="font-size: 11px; color: #666; margin-bottom: 5px;">Hash: ${key.hash ? key.hash.substring(0, 16) + '...' : 'N/A'}</p>
                                 <div class="button-group">
-                                    <button class="copy-btn" onclick="copyToClipboard('${key.apiKey}')">📋 Copy</button>
-                                    <button class="regenerate-btn" onclick="regenerateApiKey('${key.apiKey}')">🔄 Regenerate</button>
-                                    <button class="btn-danger" onclick="deleteApiKey('${key.apiKey}')">🗑️ Delete</button>
+                                    <button class="copy-btn" onclick="copyToClipboard('${key.apiKey}')">Copy</button>
+                                    <button class="btn-danger" onclick="deleteApiKey('${key.apiKey}')">Delete</button>
                                 </div>
                             </div>
                         </div>
                     `).join('');
                 } else {
-                    keysListDiv.innerHTML = `<div class="empty-state" style="color: #dc3545;">❌ ${data.message || 'Gagal memuat API Keys'}</div>`;
+                    keysListDiv.innerHTML = `<div class="empty-state" style="color: #dc3545;">${data.message || 'Gagal memuat API Keys'}</div>`;
                 }
             } catch (error) {
-                keysListDiv.innerHTML = `<div class="empty-state" style="color: #dc3545;">❌ Error loading keys: ${error.message}</div>`;
+                keysListDiv.innerHTML = `<div class="empty-state" style="color: #dc3545;">Error loading keys: ${error.message}</div>`;
             }
         }
 
         // Delete API Key
         async function deleteApiKey(apiKey) {
-            if (!confirm('⚠️ Apakah Anda yakin ingin menghapus API Key ini?\n\nKey: ' + apiKey.substring(0, 20) + '...')) {
+            if (!confirm('Apakah Anda yakin ingin menghapus API Key ini?\n\nKey: ' + apiKey.substring(0, 20) + '...')) {
                 return;
             }
 
@@ -370,19 +369,19 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    alert('✓ API Key berhasil dihapus!');
+                    alert('API Key berhasil dihapus!');
                     loadApiKeys();
                 } else {
-                    alert('✗ ' + (data.message || 'Gagal menghapus API Key'));
+                    alert(data.message || 'Gagal menghapus API Key');
                 }
             } catch (error) {
-                alert('✗ Terjadi kesalahan: ' + error.message);
+                alert('Terjadi kesalahan: ' + error.message);
             }
         }
 
         // Regenerate API Key
         async function regenerateApiKey(oldApiKey) {
-            if (!confirm('🔄 Generate API Key baru?\n\nKey lama akan diganti tetapi Nama API tetap sama.\n\nKey: ' + oldApiKey.substring(0, 20) + '...')) {
+            if (!confirm('Generate API Key baru?\n\nKey lama akan diganti tetapi data user tetap sama.\n\nKey: ' + oldApiKey.substring(0, 20) + '...')) {
                 return;
             }
 
@@ -398,7 +397,7 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    const message = `✓ API Key berhasil di-regenerate!\n\n` +
+                    const message = `API Key berhasil di-regenerate!\n\n` +
                                   `Key Baru: ${data.newApiKey.substring(0, 20)}...\n` +
                                   `Secret Baru: ${data.newApiSecret.substring(0, 20)}...\n\n` +
                                   `${data.note}`;
@@ -409,24 +408,24 @@
                     console.log('Old Key:', data.oldApiKey);
                     console.log('New Key:', data.newApiKey);
                     console.log('New Secret:', data.newApiSecret);
-                    console.log('API Name:', data.apiName);
+                    console.log('Email:', data.email);
                     console.log('==========================');
                     
                     loadApiKeys();
                 } else {
-                    alert('✗ ' + (data.message || 'Gagal regenerate API Key'));
+                    alert(data.message || 'Gagal regenerate API Key');
                 }
             } catch (error) {
-                alert('✗ Terjadi kesalahan: ' + error.message);
+                alert('Terjadi kesalahan: ' + error.message);
             }
         }
 
         // Copy to Clipboard
         function copyToClipboard(text) {
             navigator.clipboard.writeText(text).then(() => {
-                alert('✓ API Key berhasil disalin ke clipboard!');
+                alert('API Key berhasil disalin ke clipboard!');
             }).catch(err => {
-                alert('✗ Gagal menyalin: ' + err);
+                alert('Gagal menyalin: ' + err);
             });
         }
     </script>
