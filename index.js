@@ -535,6 +535,79 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
+// Endpoint untuk get semua users
+app.get('/api/users', async (req, res) => {
+    try {
+        const query = 'SELECT id, firstname, lastname, email, created_at, updated_at FROM users ORDER BY created_at DESC';
+        const [rows] = await pool.execute(query);
+        
+        res.json({
+            success: true,
+            count: rows.length,
+            users: rows
+        });
+    } catch (error) {
+        console.error('Error fetching users:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Gagal mengambil data users: ' + error.message
+        });
+    }
+});
+
+// Endpoint untuk get user by ID
+app.get('/api/users/:id', async (req, res) => {
+    const userId = req.params.id;
+    
+    try {
+        const [userRows] = await pool.execute(
+            'SELECT id, firstname, lastname, email, created_at, updated_at FROM users WHERE id = ?',
+            [userId]
+        );
+        
+        if (userRows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'User tidak ditemukan'
+            });
+        }
+        
+        // Get API keys for this user
+        const [keyRows] = await pool.execute(
+            'SELECT id, api_key, hash, created_at, expires_at, last_used, is_active FROM apikeys WHERE user_id = ?',
+            [userId]
+        );
+        
+        const now = new Date();
+        const apiKeys = keyRows.map(key => {
+            const expiresAt = new Date(key.expires_at);
+            return {
+                id: key.id,
+                apiKey: key.api_key,
+                hash: key.hash,
+                createdAt: key.created_at,
+                expiresAt: key.expires_at,
+                lastUsed: key.last_used,
+                isActive: key.is_active && now <= expiresAt,
+                isExpired: now > expiresAt
+            };
+        });
+        
+        res.json({
+            success: true,
+            user: userRows[0],
+            apiKeys: apiKeys,
+            totalApiKeys: apiKeys.length
+        });
+    } catch (error) {
+        console.error('Error fetching user:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Gagal mengambil data user: ' + error.message
+        });
+    }
+});
+
 app.listen(PORT, () => {
     console.log(`Server berjalan di http://localhost:${PORT}`);
 });
